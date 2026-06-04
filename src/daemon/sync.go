@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/srossross/clidit/src/ipc"
@@ -115,22 +116,12 @@ const openLimit = 25
 // loadProjectsMentioning opens the source files that mention query so the
 // project(s) containing the symbol get loaded before workspace/symbol runs.
 func loadProjectsMentioning(ctx *Context, query string) {
-	exts := map[string]struct{}{}
-	for _, e := range ctx.Server.Extensions {
-		exts[strings.ToLower(e)] = struct{}{}
-	}
-	hasExt := func(path string) bool {
-		dot := strings.LastIndexByte(path, '.')
-		if dot == -1 {
-			return false
-		}
-		_, ok := exts[strings.ToLower(path[dot:])]
-		return ok
-	}
-
+	hasExt := extMatcher(ctx)
 	files := ripgrepFiles(ctx.Root, query)
 	if files == nil {
-		files = scanFilesContaining(ctx.Root, query, hasExt)
+		files = scanFiles(ctx.Root, hasExt, func(data []byte) bool {
+			return strings.Contains(string(data), query)
+		}, openLimit)
 	}
 	var matched []string
 	for _, f := range files {
@@ -153,11 +144,63 @@ func loadProjectsMentioning(ctx *Context, query string) {
 	}
 }
 
-// ripgrepFiles returns files containing query via ripgrep, or nil if ripgrep
-// isn't available or errored.
+// candidateFilesRegex returns up to limit extension-matching files whose contents
+// match re, via ripgrep in regex mode (falling back to a bounded scan when
+// ripgrep isn't available). ripgrep's regex engine is close enough to RE2 to use
+// as a prefilter; the caller re-checks each span with re itself, so any
+// over-inclusion here is harmless.
+func candidateFilesRegex(ctx *Context, pattern string, re *regexp.Regexp, limit int) []string {
+	hasExt := extMatcher(ctx)
+	files := ripgrepFilesRegex(ctx.Root, pattern)
+	if files == nil {
+		files = scanFiles(ctx.Root, hasExt, re.Match, limit)
+	}
+	var matched []string
+	for _, f := range files {
+		if hasExt(f) {
+			matched = append(matched, f)
+			if len(matched) >= limit {
+				break
+			}
+		}
+	}
+	return matched
+}
+
+// extMatcher returns a predicate reporting whether a path's extension is one the
+// server handles.
+func extMatcher(ctx *Context) func(string) bool {
+	exts := map[string]struct{}{}
+	for _, e := range ctx.Server.Extensions {
+		exts[strings.ToLower(e)] = struct{}{}
+	}
+	return func(path string) bool {
+		dot := strings.LastIndexByte(path, '.')
+		if dot == -1 {
+			return false
+		}
+		_, ok := exts[strings.ToLower(path[dot:])]
+		return ok
+	}
+}
+
+// ripgrepFiles returns files containing query (literal) via ripgrep, or nil if
+// ripgrep isn't available or errored.
 func ripgrepFiles(root, query string) []string {
-	//nolint:gosec // fixed argv; query is passed as a literal operand after `--`, not a shell string
-	cmd := exec.Command("rg", "--files-with-matches", "--fixed-strings", "--", query, root)
+	return runRipgrep("--files-with-matches", "--fixed-strings", "--", query, root)
+}
+
+// ripgrepFilesRegex returns files whose contents match the regex pattern via
+// ripgrep, or nil if ripgrep isn't available or errored.
+func ripgrepFilesRegex(root, pattern string) []string {
+	return runRipgrep("--files-with-matches", "--", pattern, root)
+}
+
+// runRipgrep runs `rg <args>` and returns the matched file paths, [] on "no
+// matches", or nil when ripgrep is missing or errors.
+func runRipgrep(args ...string) []string {
+	//nolint:gosec // fixed argv; the query/pattern is a literal operand after `--`, not a shell string
+	cmd := exec.Command("rg", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
@@ -174,13 +217,13 @@ func ripgrepFiles(root, query string) []string {
 	return files
 }
 
-// scanFilesContaining is the fallback: a bounded scan reading files for a
-// substring match.
-func scanFilesContaining(root, query string, hasExt func(string) bool) []string {
+// scanFiles is the no-ripgrep fallback: a bounded directory walk returning up to
+// limit extension-matching files whose contents satisfy match.
+func scanFiles(root string, hasExt func(string) bool, match func([]byte) bool, limit int) []string {
 	var matches []string
 	stack := []string{root}
 	budget := 4000
-	for len(stack) > 0 && budget > 0 && len(matches) < openLimit {
+	for len(stack) > 0 && budget > 0 && len(matches) < limit {
 		dir := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		entries, err := os.ReadDir(dir)
@@ -199,10 +242,10 @@ func scanFilesContaining(root, query string, hasExt func(string) bool) []string 
 					break
 				}
 				//nolint:gosec // full is a path under the workspace root we're scanning
-				if data, err := os.ReadFile(full); err == nil && strings.Contains(string(data), query) {
+				if data, err := os.ReadFile(full); err == nil && match(data) {
 					matches = append(matches, full)
 				}
-				if len(matches) >= openLimit {
+				if len(matches) >= limit {
 					break
 				}
 			}

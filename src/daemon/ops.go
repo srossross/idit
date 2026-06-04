@@ -3,6 +3,7 @@ package daemon
 import (
 	"encoding/json"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,8 @@ func init() {
 		"members":  opMembers,
 		"outline":  opOutline,
 		"symbol":   opSymbol,
+		"string":   opTokenSearch,
+		"comment":  opTokenSearch,
 		"callers":  opCallers,
 		"check":    opCheck,
 		"rename":   opRename,
@@ -227,6 +230,108 @@ func opSymbol(ctx *Context, req ipc.Request) ipc.Response {
 	loadProjectsMentioning(ctx, req.Query)
 	result := ctx.request("workspace/symbol", map[string]any{"query": req.Query})
 	return ipc.Response{OK: true, Symbols: lsputil.ToFoundSymbols(result)}
+}
+
+// Cap on how many files we request semantic tokens for (one round-trip each).
+const tokenSearchFileLimit = 100
+
+// opTokenSearch backs `idit string` and `idit comment`: it finds the regex query
+// inside spans the server classifies as the token type named by req.Op ("string"
+// or "comment"). It greps the workspace for candidate files, then pulls semantic
+// tokens for each and matches the query within the wanted spans.
+func opTokenSearch(ctx *Context, req ipc.Request) ipc.Response {
+	if req.Query == "" {
+		return ipc.Errorf("missing query")
+	}
+	// Compile once, sharing the pattern (including any (?i) for -i) with the
+	// ripgrep prefilter so it never excludes a file the regex would match.
+	pattern := req.Query
+	if req.IgnoreCase {
+		pattern = "(?i)" + pattern
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return ipc.Errorf("invalid regex: %v", err)
+	}
+
+	legend, err := lsputil.SemanticLegendFrom(ctx.Capabilities)
+	if err != nil {
+		// Soft-fail: a server without semantic tokens just contributes no hits,
+		// so a mixed-language workspace still returns the other servers' results.
+		return ipc.Response{OK: true, Message: ctx.Server.Name + ": semantic tokens unavailable"}
+	}
+
+	files := candidateFilesRegex(ctx, pattern, re, tokenSearchFileLimit)
+	sites := tokenSearchFiles(ctx, files, legend, req.Op, re)
+	return ipc.Response{OK: true, Locations: sites}
+}
+
+// tokenSearchFiles syncs every candidate file (settling project load once), then
+// fans out the per-file semantic-token requests with bounded concurrency.
+func tokenSearchFiles(ctx *Context, files []string, legend lsputil.SemanticLegend, wantType string, re *regexp.Regexp) []lsputil.Site {
+	type synced struct{ path, uri string }
+	var docs []synced
+	fresh := false
+	for _, f := range files {
+		doc := syncDoc(ctx, f)
+		if doc == nil {
+			continue
+		}
+		if doc.fresh {
+			fresh = true
+		}
+		docs = append(docs, synced{path: f, uri: doc.uri})
+	}
+	// A cold open may kick off project loading; settle once before querying so
+	// tokens reflect a fully-loaded project.
+	if fresh {
+		ctx.Progress.Settle(progressMax)
+	}
+
+	results := make([][]lsputil.Site, len(docs))
+	sem := make(chan struct{}, 16)
+	var wg sync.WaitGroup
+	for i, d := range docs {
+		wg.Add(1)
+		go func(i int, d synced) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			results[i] = scanFileTokens(ctx, d.path, d.uri, legend, wantType, re)
+		}(i, d)
+	}
+	wg.Wait()
+
+	var out []lsputil.Site
+	for _, r := range results {
+		out = append(out, r...)
+	}
+	return out
+}
+
+// scanFileTokens pulls one file's semantic tokens and returns a Site for every
+// regex match inside a span of the wanted type. A per-file error is swallowed so
+// one untokenizable file doesn't abort the whole search.
+func scanFileTokens(ctx *Context, absPath, uri string, legend lsputil.SemanticLegend, wantType string, re *regexp.Regexp) []lsputil.Site {
+	raw, err := ctx.Lsp.Request("textDocument/semanticTokens/full", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	})
+	if err != nil {
+		return nil
+	}
+	open, ok := ctx.getOpen(uri)
+	if !ok {
+		return nil
+	}
+	lines := strings.Split(open.text, "\n")
+	var sites []lsputil.Site
+	for _, tok := range lsputil.DecodeSemanticTokens(raw, legend) {
+		if tok.TypeName != wantType {
+			continue
+		}
+		sites = append(sites, lsputil.SitesForRegexInToken(absPath, tok, lines, re)...)
+	}
+	return sites
 }
 
 func opCallers(ctx *Context, req ipc.Request) ipc.Response {

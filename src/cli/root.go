@@ -50,6 +50,8 @@ func newRootCmd() *cobra.Command {
 		newMembersCmd(),
 		newOutlineCmd(),
 		newSymbolCmd(),
+		newStringCmd(),
+		newCommentCmd(),
 		newCallersCmd(),
 		newCheckCmd(),
 		newRenameCmd(),
