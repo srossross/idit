@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/srossross/clidit/src/lsputil"
-	"github.com/srossross/clidit/src/treesitter"
+	"github.com/srossross/idit/src/lsputil"
+	"github.com/srossross/idit/src/treesitter"
 )
 
 // A target is either an explicit position (`file.ext:line:col`) or a symbol path

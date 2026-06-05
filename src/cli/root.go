@@ -14,8 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srossross/clidit/src/ipc"
-	"github.com/srossross/clidit/src/workspace"
+	"github.com/srossross/idit/src/ipc"
+	"github.com/srossross/idit/src/workspace"
 )
 
 // requestTimeout bounds a CLI→daemon IPC round-trip. It must exceed the
@@ -95,13 +95,18 @@ func socketForFile(file string) (string, workspace.ServerConfig) {
 	}
 	server, ok := workspace.ServerForFile(cfg, file)
 	if !ok {
-		ext := ""
-		if dot := filepath.Ext(file); dot != "" {
-			ext = dot
-		}
 		known := "(none)"
 		if names := serverNames(cfg); names != "" {
 			known = names
+		}
+		// Name the real cause rather than printing a blank extension: a directory
+		// and an extensionless file both have no extension to match a server.
+		if info, err := os.Stat(file); err == nil && info.IsDir() {
+			fail("%s is a directory — idit operates on a single file (configured servers: %s)", file, known)
+		}
+		ext := filepath.Ext(file)
+		if ext == "" {
+			fail("cannot determine a language for %s: it has no file extension (configured servers: %s)", file, known)
 		}
 		fail("no server configured for %s files (configured: %s; add one with `idit server add`)", ext, known)
 	}

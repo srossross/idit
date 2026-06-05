@@ -75,11 +75,24 @@ var Presets = map[string]ServerConfig{
 		LanguageID: "python",
 		Install:    "uv tool install basedpyright  (or: npm install -g basedpyright)",
 	},
+	// sqls is schema-aware: completion, hover and definition need a database
+	// connection, which it requests via workspace/configuration under the "sqls"
+	// section — exactly the path idit's Settings map already serves. Add the
+	// connection under settings.sqls.connections in .idit/config.yml (see
+	// ServerConfig.Settings); without one, sqls still starts and formats SQL but
+	// offers no schema intelligence.
+	"sqls": {
+		Kind:       "lsp",
+		Command:    []string{"sqls"},
+		Extensions: []string{".sql"},
+		LanguageID: "sql",
+		Install:    "go install github.com/sqls-server/sqls@latest",
+	},
 }
 
 // PresetNames returns preset keys in a stable order for help text.
 func PresetNames() []string {
-	return []string{"tsserver", "gopls", "clangd", "basedpyright"}
+	return []string{"tsserver", "gopls", "clangd", "basedpyright", "sqls"}
 }
 
 func ConfigPath(root string) string {

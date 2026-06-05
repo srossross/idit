@@ -6,8 +6,8 @@ package daemon
 import (
 	"sync"
 
-	"github.com/srossross/clidit/src/lspclient"
-	"github.com/srossross/clidit/src/workspace"
+	"github.com/srossross/idit/src/lspclient"
+	"github.com/srossross/idit/src/workspace"
 )
 
 // openDoc is what we last sent the server for an open document, for change

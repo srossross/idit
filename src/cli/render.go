@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/srossross/clidit/src/ipc"
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/ipc"
+	"github.com/srossross/idit/src/lsputil"
 )
 
 // How many lines of a definition to show before eliding the middle.

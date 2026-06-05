@@ -65,6 +65,46 @@ func TestEmitLoadSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSqlsConnectionConfigRoundTrip(t *testing.T) {
+	sqls := presetServer("sqls")
+	// sqls reads its DB connection from the "sqls" section's connections array,
+	// requested via workspace/configuration — the same path Settings serves.
+	sqls.Settings = map[string]map[string]any{
+		"sqls": {"connections": []any{
+			map[string]any{"driver": "postgresql", "dataSourceName": "host=127.0.0.1 user=app dbname=app sslmode=disable"},
+		}},
+	}
+	out, err := Emit(IditConfig{Servers: []ServerConfig{sqls}})
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	root := t.TempDir()
+	writeConfig(t, root, out)
+
+	got, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	s := got.Servers[0]
+	if mapped, ok := ServerForFile(got, "/db/schema.sql"); !ok || mapped.Name != "sqls" {
+		t.Fatalf(".sql should map to sqls, got %q ok=%v", mapped.Name, ok)
+	}
+	// LSPSettings()["sqls"] is exactly what the workspace/configuration handler
+	// returns to sqls; the connection must survive the YAML round-trip.
+	sec, ok := s.LSPSettings()["sqls"].(map[string]any)
+	if !ok {
+		t.Fatalf("LSPSettings missing sqls section: %v", s.LSPSettings())
+	}
+	conns, ok := sec["connections"].([]any)
+	if !ok || len(conns) != 1 {
+		t.Fatalf("connections not round-tripped: %#v", sec["connections"])
+	}
+	conn := conns[0].(map[string]any)
+	if conn["driver"] != "postgresql" || conn["dataSourceName"] == "" {
+		t.Fatalf("connection fields lost: %#v", conn)
+	}
+}
+
 func TestValidateRuntime(t *testing.T) {
 	// A Python server with no interpreter fails fast.
 	bp := presetServer("basedpyright")

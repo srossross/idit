@@ -9,7 +9,7 @@ package ipc
 import (
 	"fmt"
 
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/lsputil"
 )
 
 // Request is the typed superset of fields any op needs. Unused fields are

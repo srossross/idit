@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srossross/clidit/src/workspace"
+	"github.com/srossross/idit/src/workspace"
 )
 
 func newInitCmd() *cobra.Command {

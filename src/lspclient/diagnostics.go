@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/lsputil"
 )
 
 // DiagnosticsTracker tracks `textDocument/publishDiagnostics` notifications,

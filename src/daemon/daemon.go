@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/srossross/clidit/src/ipc"
-	"github.com/srossross/clidit/src/lspclient"
-	"github.com/srossross/clidit/src/lsputil"
-	"github.com/srossross/clidit/src/workspace"
+	"github.com/srossross/idit/src/ipc"
+	"github.com/srossross/idit/src/lspclient"
+	"github.com/srossross/idit/src/lsputil"
+	"github.com/srossross/idit/src/workspace"
 )
 
 var debug = os.Getenv("IDIT_DEBUG") != ""

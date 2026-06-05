@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/srossross/clidit/src/workspace"
+	"github.com/srossross/idit/src/workspace"
 )
 
 // maxSocketPathLen is a conservative cap on a unix-domain socket path: macOS's

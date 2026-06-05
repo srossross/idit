@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srossross/clidit/src/ipc"
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/ipc"
+	"github.com/srossross/idit/src/lsputil"
 )
 
 func newOutlineCmd() *cobra.Command {

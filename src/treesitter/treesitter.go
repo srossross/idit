@@ -19,7 +19,8 @@ import (
 	tree_sitter_python "github.com/tree-sitter/tree-sitter-python/bindings/go"
 	tree_sitter_typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/lsputil"
+	tree_sitter_sql "github.com/srossross/idit/src/treesitter/sqlgrammar"
 )
 
 // Canonical kinds a search can target. Each maps to a per-grammar query whose
@@ -154,6 +155,19 @@ func init() {
 		KindVariable: "(assignment left: (identifier) @x)",
 	}
 
+	// SQL (DerekStride grammar). The grammar has no dedicated string node — string,
+	// numeric, boolean and null literals all parse to a single `literal` node — so
+	// KindString maps to `literal` and will also match inside numeric literals.
+	// Block comments are `marginalia`; line comments are `comment`. Type targets
+	// table/view names; variable targets column names in a CREATE TABLE.
+	sqlQueries := map[string]string{
+		KindString:  "(literal) @x",
+		KindComment: "(comment) @x (marginalia) @x",
+		KindType: "(create_table (object_reference name: (identifier) @x)) " +
+			"(create_view (object_reference name: (identifier) @x))",
+		KindVariable: "(column_definition name: (identifier) @x)",
+	}
+
 	goGrammar := newGrammar(tree_sitter_go.Language(), goQueries)
 	jsGrammar := newGrammar(tree_sitter_javascript.Language(), jsQueries)
 	tsGrammar := newGrammar(tree_sitter_typescript.LanguageTypescript(), tsQueries)
@@ -161,6 +175,7 @@ func init() {
 	cGrammar := newGrammar(tree_sitter_c.Language(), cQueries)
 	cppGrammar := newGrammar(tree_sitter_cpp.Language(), cppQueries)
 	pyGrammar := newGrammar(tree_sitter_python.Language(), pyQueries)
+	sqlGrammar := newGrammar(tree_sitter_sql.Language(), sqlQueries)
 
 	goGrammar.locate = compileLocate(goGrammar.lang, goLocateSpecs)
 	jsGrammar.locate = compileLocate(jsGrammar.lang, jsLocateSpecs)
@@ -169,6 +184,7 @@ func init() {
 	cGrammar.locate = compileLocate(cGrammar.lang, cLocateSpecs)
 	cppGrammar.locate = compileLocate(cppGrammar.lang, cppLocateSpecs)
 	pyGrammar.locate = compileLocate(pyGrammar.lang, pyLocateSpecs)
+	sqlGrammar.locate = compileLocate(sqlGrammar.lang, sqlLocateSpecs)
 
 	registry = map[string]*Grammar{
 		".go":  goGrammar,
@@ -191,6 +207,7 @@ func init() {
 		".hh":  cppGrammar,
 		".py":  pyGrammar,
 		".pyi": pyGrammar,
+		".sql": sqlGrammar,
 	}
 }
 

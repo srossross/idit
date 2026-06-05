@@ -114,6 +114,20 @@ func TestSearchPythonKinds(t *testing.T) {
 	wantPairs(t, searchLineCols(t, ".py", src, []string{KindVariable}, "x"), [2]int{2, 1})
 }
 
+func TestSearchSQLKinds(t *testing.T) {
+	src := "-- TODO comment\n" + // line 1
+		"/* TODO block */\n" + // line 2 (marginalia)
+		"CREATE TABLE widgets (\n" + // line 3
+		"  gizmo_id int,\n" + // line 4
+		"  label varchar\n" + // line 5
+		");\n" +
+		"INSERT INTO widgets VALUES (1, 'TODO str');\n" // line 7
+	wantPairs(t, searchLineCols(t, ".sql", src, []string{KindComment}, "TODO"), [2]int{1, 4}, [2]int{2, 4})
+	wantPairs(t, searchLineCols(t, ".sql", src, []string{KindType}, "widgets"), [2]int{3, 14})
+	wantPairs(t, searchLineCols(t, ".sql", src, []string{KindVariable}, "gizmo_id"), [2]int{4, 3})
+	wantPairs(t, searchLineCols(t, ".sql", src, []string{KindString}, "TODO"), [2]int{7, 33})
+}
+
 func TestLocatePython(t *testing.T) {
 	src := "def handle(arg):\n    y = arg\n    return y\n"
 	out := ForExt(".py").Locate([]byte(src), []string{"handle", "y"})
@@ -215,6 +229,7 @@ func TestRegistryKindsCompile(t *testing.T) {
 		".c":   {KindString, KindComment, KindFunction, KindType, KindVariable},
 		".cpp": {KindString, KindComment, KindFunction, KindClass, KindMethod, KindType, KindVariable},
 		".py":  {KindString, KindComment, KindFunction, KindClass, KindVariable},
+		".sql": {KindString, KindComment, KindType, KindVariable},
 	}
 	for ext, kinds := range want {
 		g := ForExt(ext)

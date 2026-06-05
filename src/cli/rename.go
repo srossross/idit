@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srossross/clidit/src/ipc"
+	"github.com/srossross/idit/src/ipc"
 )
 
 func newRenameCmd() *cobra.Command {

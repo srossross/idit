@@ -12,7 +12,7 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/lsputil"
 )
 
 // RpcError is a JSON-RPC error object.

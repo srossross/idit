@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srossross/clidit/src/fsscan"
-	"github.com/srossross/clidit/src/lsputil"
-	"github.com/srossross/clidit/src/treesitter"
+	"github.com/srossross/idit/src/fsscan"
+	"github.com/srossross/idit/src/lsputil"
+	"github.com/srossross/idit/src/treesitter"
 )
 
 // findFileLimit caps how many files a search reads. Parsing/grepping is local and
@@ -59,7 +59,7 @@ func newFindCmd() *cobra.Command {
 			// Explain why matching files were ignored: --kind only searches
 			// languages with a bundled grammar.
 			if useKinds && len(skipped) > 0 {
-				fmt.Fprintf(os.Stderr, "idit: --kind skipped files with no grammar (%s); supported: %s\n",
+				fmt.Fprintf(os.Stderr, "idit: --kind skipped files with no grammar (%s); %s\n",
 					strings.Join(skipped, " "), strings.Join(treesitter.Extensions(), " "))
 			}
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/lsputil"
 )
 
 // kindAliases maps user-friendly shorthands to canonical LSP kind names (see

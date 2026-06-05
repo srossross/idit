@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/lsputil"
 )
 
 func writeTemp(t *testing.T, content string) string {

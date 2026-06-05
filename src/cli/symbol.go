@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srossross/clidit/src/ipc"
-	"github.com/srossross/clidit/src/lsputil"
-	"github.com/srossross/clidit/src/workspace"
+	"github.com/srossross/idit/src/ipc"
+	"github.com/srossross/idit/src/lsputil"
+	"github.com/srossross/idit/src/workspace"
 )
 
 func newSymbolCmd() *cobra.Command {

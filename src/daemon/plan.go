@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/srossross/clidit/src/ipc"
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/ipc"
+	"github.com/srossross/idit/src/lsputil"
 )
 
 // --- plan helpers ---

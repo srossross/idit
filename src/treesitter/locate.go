@@ -5,7 +5,7 @@ import (
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 
-	"github.com/srossross/clidit/src/lsputil"
+	"github.com/srossross/idit/src/lsputil"
 )
 
 // Locate resolves a dotted symbol path (e.g. main.x) within a single file by
@@ -119,6 +119,15 @@ var pyLocateSpecs = []kindQuery{
 	{"parameter", "(default_parameter name: (identifier) @x)"},
 	{"parameter", "(typed_parameter (identifier) @x)"},
 	{"parameter", "(typed_default_parameter name: (identifier) @x)"},
+}
+
+// sqlLocateSpecs resolve table/view names (type) and column names (variable).
+// SQL has no nested declaration scopes worth descending, so these cover the
+// useful single-segment targets.
+var sqlLocateSpecs = []kindQuery{
+	{KindType, "(create_table (object_reference name: (identifier) @x))"},
+	{KindType, "(create_view (object_reference name: (identifier) @x))"},
+	{KindVariable, "(column_definition name: (identifier) @x)"},
 }
 
 // compileLocate compiles the locate specs, skipping any whose node types the
