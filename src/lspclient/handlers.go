@@ -42,17 +42,24 @@ func mustRaw(v any) json.RawMessage {
 
 // defaultServerRequestHandler gives minimal answers to the requests a server
 // makes while starting up, so the handshake doesn't stall waiting on us.
-func defaultServerRequestHandler(method string, params json.RawMessage) (any, *RpcError) {
+// settings supplies workspace/configuration values, keyed by section name.
+func defaultServerRequestHandler(settings map[string]any, method string, params json.RawMessage) (any, *RpcError) {
 	switch method {
 	case "client/registerCapability", "client/unregisterCapability", "window/workDoneProgress/create":
 		return nil, nil
 	case "workspace/configuration":
-		// Reply with one entry per requested item; null = "use your defaults".
+		// One entry per requested item: the configured value for that section,
+		// or null ("use your defaults") when we have nothing for it.
 		var p struct {
-			Items []json.RawMessage `json:"items"`
+			Items []struct {
+				Section string `json:"section"`
+			} `json:"items"`
 		}
 		_ = json.Unmarshal(params, &p)
 		out := make([]any, len(p.Items))
+		for i, it := range p.Items {
+			out[i] = settings[it.Section]
+		}
 		return out, nil
 	case "workspace/applyEdit":
 		return map[string]any{"applied": false}, nil

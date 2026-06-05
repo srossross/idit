@@ -18,7 +18,11 @@ import (
 	"github.com/srossross/clidit/src/workspace"
 )
 
-const requestTimeout = 15 * time.Second
+// requestTimeout bounds a CLI→daemon IPC round-trip. It must exceed the
+// daemon's worst-case op budget, or the CLI abandons a request the daemon is
+// still legitimately serving: a cold check waits on clangd indexing
+// (progressMax 30s in daemon/ops.go) plus diagnostics collection (diagMax 5s).
+const requestTimeout = 60 * time.Second
 
 // Run dispatches a CLI invocation (os.Args[1:]).
 func Run(args []string) {

@@ -77,6 +77,70 @@ func TestSearchTypeScriptKinds(t *testing.T) {
 	wantPairs(t, searchLineCols(t, ".ts", src, []string{KindType}, "Id"), [2]int{6, 6})
 }
 
+func TestSearchCKinds(t *testing.T) {
+	src := "// TODO comment\n" + // line 1
+		"int doThing(int n) { return n; }\n" + // line 2
+		"struct Widget { int x; };\n" + // line 3
+		"const char *s = \"TODO str\";\n" + // line 4
+		"int count = 0;\n" // line 5
+	wantPairs(t, searchLineCols(t, ".c", src, []string{KindComment}, "TODO"), [2]int{1, 4})
+	wantPairs(t, searchLineCols(t, ".c", src, []string{KindFunction}, "doThing"), [2]int{2, 5})
+	wantPairs(t, searchLineCols(t, ".c", src, []string{KindType}, "Widget"), [2]int{3, 8})
+	wantPairs(t, searchLineCols(t, ".c", src, []string{KindString}, "TODO"), [2]int{4, 18})
+	wantPairs(t, searchLineCols(t, ".c", src, []string{KindVariable}, "count"), [2]int{5, 5})
+}
+
+func TestSearchCppKinds(t *testing.T) {
+	src := "class Widget {\n" + // line 1
+		"  void doThing() {}\n" + // line 2 (in-class definition with body)
+		"  int decl();\n" + // line 3 (in-class declaration, no body)
+		"};\n" +
+		"void Widget::outOfLine() {}\n" // line 5 (out-of-line definition)
+	wantPairs(t, searchLineCols(t, ".cpp", src, []string{KindClass}, "Widget"), [2]int{1, 7})
+	wantPairs(t, searchLineCols(t, ".cpp", src, []string{KindMethod}, "doThing"), [2]int{2, 8})
+	wantPairs(t, searchLineCols(t, ".cpp", src, []string{KindMethod}, "decl"), [2]int{3, 7})
+	wantPairs(t, searchLineCols(t, ".cpp", src, []string{KindMethod}, "outOfLine"), [2]int{5, 14})
+}
+
+func TestSearchPythonKinds(t *testing.T) {
+	src := "# TODO comment\n" + // line 1
+		"x = \"TODO str\"\n" + // line 2
+		"def do_it(): pass\n" + // line 3
+		"class Widget: pass\n" // line 4
+	wantPairs(t, searchLineCols(t, ".py", src, []string{KindComment}, "TODO"), [2]int{1, 3})
+	wantPairs(t, searchLineCols(t, ".py", src, []string{KindString}, "TODO"), [2]int{2, 6})
+	wantPairs(t, searchLineCols(t, ".py", src, []string{KindFunction}, "do_it"), [2]int{3, 5})
+	wantPairs(t, searchLineCols(t, ".py", src, []string{KindClass}, "Widget"), [2]int{4, 7})
+	wantPairs(t, searchLineCols(t, ".py", src, []string{KindVariable}, "x"), [2]int{2, 1})
+}
+
+func TestLocatePython(t *testing.T) {
+	src := "def handle(arg):\n    y = arg\n    return y\n"
+	out := ForExt(".py").Locate([]byte(src), []string{"handle", "y"})
+	if len(out.Matches) != 1 || out.Matches[0].Line != 2 {
+		t.Fatalf("want single match at line 2, got %+v", out)
+	}
+	// A parameter resolves too.
+	param := ForExt(".py").Locate([]byte(src), []string{"handle", "arg"})
+	if len(param.Matches) != 1 || param.Matches[0].Line != 1 {
+		t.Fatalf("want parameter match at line 1, got %+v", param)
+	}
+}
+
+func TestLocateC(t *testing.T) {
+	// A top-level function and its parameter resolve; body locals do not (the
+	// function name nests under function_declarator, a sibling of the body).
+	src := "int doThing(int n) {\n\tint y = n;\n\treturn y;\n}\n"
+	fn := ForExt(".c").Locate([]byte(src), []string{"doThing"})
+	if len(fn.Matches) != 1 || fn.Matches[0].Line != 1 {
+		t.Fatalf("want single function match at line 1, got %+v", fn)
+	}
+	param := ForExt(".c").Locate([]byte(src), []string{"doThing", "n"})
+	if len(param.Matches) != 1 || param.Matches[0].Line != 1 {
+		t.Fatalf("want parameter match at line 1, got %+v", param)
+	}
+}
+
 func TestCanonicalKind(t *testing.T) {
 	cases := map[string]string{
 		"function": KindFunction, "func": KindFunction, "fn": KindFunction,
@@ -145,9 +209,12 @@ func TestLocateTypeScript(t *testing.T) {
 // instead of silently disabling a kind in production.
 func TestRegistryKindsCompile(t *testing.T) {
 	want := map[string][]string{
-		".go": {KindString, KindComment, KindFunction, KindMethod, KindType, KindVariable, KindConst},
-		".js": {KindString, KindComment, KindFunction, KindMethod, KindClass, KindVariable},
-		".ts": {KindString, KindComment, KindFunction, KindMethod, KindClass, KindInterface, KindType, KindVariable},
+		".go":  {KindString, KindComment, KindFunction, KindMethod, KindType, KindVariable, KindConst},
+		".js":  {KindString, KindComment, KindFunction, KindMethod, KindClass, KindVariable},
+		".ts":  {KindString, KindComment, KindFunction, KindMethod, KindClass, KindInterface, KindType, KindVariable},
+		".c":   {KindString, KindComment, KindFunction, KindType, KindVariable},
+		".cpp": {KindString, KindComment, KindFunction, KindClass, KindMethod, KindType, KindVariable},
+		".py":  {KindString, KindComment, KindFunction, KindClass, KindVariable},
 	}
 	for ext, kinds := range want {
 		g := ForExt(ext)

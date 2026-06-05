@@ -12,8 +12,11 @@ import (
 	"unsafe"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
+	tree_sitter_c "github.com/tree-sitter/tree-sitter-c/bindings/go"
+	tree_sitter_cpp "github.com/tree-sitter/tree-sitter-cpp/bindings/go"
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
 	tree_sitter_javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
+	tree_sitter_python "github.com/tree-sitter/tree-sitter-python/bindings/go"
 	tree_sitter_typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 
 	"github.com/srossross/clidit/src/lsputil"
@@ -114,15 +117,58 @@ func init() {
 	tsQueries[KindInterface] = "(interface_declaration name: (type_identifier) @x)"
 	tsQueries[KindType] = "(type_alias_declaration name: (type_identifier) @x)"
 
+	// C, and C++ which extends it (shared node names for the C constructs, plus
+	// classes/methods). A typedef's name is reached via its declarator, which for a
+	// plain `typedef T Name;` is a type_identifier; function-pointer/array typedefs
+	// nest deeper and aren't captured.
+	cQueries := map[string]string{
+		KindString:   "(string_literal) @x (char_literal) @x",
+		KindComment:  "(comment) @x",
+		KindFunction: "(function_definition declarator: (function_declarator declarator: (identifier) @x))",
+		KindType: "(struct_specifier name: (type_identifier) @x) " +
+			"(union_specifier name: (type_identifier) @x) " +
+			"(enum_specifier name: (type_identifier) @x) " +
+			"(type_definition declarator: (type_identifier) @x)",
+		KindVariable: "(declaration declarator: (identifier) @x) " +
+			"(declaration declarator: (init_declarator declarator: (identifier) @x))",
+	}
+	cppQueries := map[string]string{}
+	maps.Copy(cppQueries, cQueries)
+	cppQueries[KindClass] = "(class_specifier name: (type_identifier) @x)"
+	// A method name is a field_identifier whether it's an in-class declaration
+	// (field_declaration) or an in-class definition with a body (function_definition);
+	// an out-of-line definition (void C::m() {}) names it via qualified_identifier.
+	cppQueries[KindMethod] = "(field_declaration declarator: (function_declarator declarator: (field_identifier) @x)) " +
+		"(function_definition declarator: (function_declarator declarator: (field_identifier) @x)) " +
+		"(function_definition declarator: (function_declarator declarator: (qualified_identifier name: (identifier) @x)))"
+
+	// Python has no distinct method node — a method is just a function_definition
+	// nested in a class body — so it supports function but not method. The plain
+	// function_definition query also matches decorated defs, since tree-sitter
+	// matches nodes anywhere in the subtree regardless of the decorator wrapper.
+	pyQueries := map[string]string{
+		KindString:   "(string) @x",
+		KindComment:  "(comment) @x",
+		KindFunction: "(function_definition name: (identifier) @x)",
+		KindClass:    "(class_definition name: (identifier) @x)",
+		KindVariable: "(assignment left: (identifier) @x)",
+	}
+
 	goGrammar := newGrammar(tree_sitter_go.Language(), goQueries)
 	jsGrammar := newGrammar(tree_sitter_javascript.Language(), jsQueries)
 	tsGrammar := newGrammar(tree_sitter_typescript.LanguageTypescript(), tsQueries)
 	tsxGrammar := newGrammar(tree_sitter_typescript.LanguageTSX(), tsQueries)
+	cGrammar := newGrammar(tree_sitter_c.Language(), cQueries)
+	cppGrammar := newGrammar(tree_sitter_cpp.Language(), cppQueries)
+	pyGrammar := newGrammar(tree_sitter_python.Language(), pyQueries)
 
 	goGrammar.locate = compileLocate(goGrammar.lang, goLocateSpecs)
 	jsGrammar.locate = compileLocate(jsGrammar.lang, jsLocateSpecs)
 	tsGrammar.locate = compileLocate(tsGrammar.lang, tsLocateSpecs)
 	tsxGrammar.locate = compileLocate(tsxGrammar.lang, tsLocateSpecs)
+	cGrammar.locate = compileLocate(cGrammar.lang, cLocateSpecs)
+	cppGrammar.locate = compileLocate(cppGrammar.lang, cppLocateSpecs)
+	pyGrammar.locate = compileLocate(pyGrammar.lang, pyLocateSpecs)
 
 	registry = map[string]*Grammar{
 		".go":  goGrammar,
@@ -134,6 +180,17 @@ func init() {
 		".mts": tsGrammar,
 		".cts": tsGrammar,
 		".tsx": tsxGrammar,
+		".c":   cGrammar,
+		// .h is parsed as C++: a near-superset of C, so it handles both C and C++
+		// headers; dedicated extensions pick the precise grammar.
+		".h":   cppGrammar,
+		".cpp": cppGrammar,
+		".cc":  cppGrammar,
+		".cxx": cppGrammar,
+		".hpp": cppGrammar,
+		".hh":  cppGrammar,
+		".py":  pyGrammar,
+		".pyi": pyGrammar,
 	}
 }
 

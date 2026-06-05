@@ -11,12 +11,35 @@ import (
 	"github.com/srossross/clidit/src/workspace"
 )
 
+// maxSocketPathLen is a conservative cap on a unix-domain socket path: macOS's
+// sun_path holds 104 bytes (including the NUL), Linux 108. Staying under 104
+// works on both; we leave a byte of headroom.
+const maxSocketPathLen = 103
+
 // ensureSocket resolves a server's daemon socket, starting the daemon (detached)
 // and waiting for it if none is running.
 func ensureSocket(root string, server workspace.ServerConfig) (string, error) {
 	sock := workspace.SocketPath(root, server.Name)
 	if canConnect(sock) {
 		return sock, nil // already running
+	}
+
+	// A unix socket path longer than the OS limit makes the daemon's bind fail
+	// with a cryptic "invalid argument"; catch it here so the user gets an
+	// actionable message instead of a 20s readiness timeout.
+	if len(sock) > maxSocketPathLen {
+		return "", fmt.Errorf("daemon socket path is too long for this OS (%d > %d bytes):\n  %s\n  move the workspace to a shorter path",
+			len(sock), maxSocketPathLen, sock)
+	}
+
+	// Fail fast with clear, actionable messages before spawning a daemon that
+	// would otherwise stall the handshake: a missing server binary, or (for
+	// Python) a missing interpreter, both otherwise surface as a 20s timeout.
+	if err := server.CheckBinary(); err != nil {
+		return "", err
+	}
+	if err := server.ValidateRuntime(); err != nil {
+		return "", err
 	}
 
 	if os.Getenv("IDIT_NO_AUTOSTART") != "" {
@@ -40,6 +63,9 @@ func spawnDaemon(server workspace.ServerConfig, root string) error {
 
 	exe, err := os.Executable()
 	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(workspace.LogDir(root), 0o750); err != nil {
 		return err
 	}
 	//nolint:gosec // logPath is derived from the workspace state dir, not external input
@@ -75,7 +101,7 @@ func waitForSocket(sock string, timeout time.Duration) error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("daemon did not become ready in time (see %s)", workspace.StateDir+"/*.log")
+	return fmt.Errorf("daemon did not become ready in time (see %s)", workspace.StateDir+"/logs/*.log")
 }
 
 func canConnect(sock string) bool {

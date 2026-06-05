@@ -25,9 +25,15 @@ func PidPath(root, languageKey string) string {
 	return filepath.Join(root, StateDir, languageKey+".pid")
 }
 
+// LogDir is the directory holding per-server daemon logs, kept in its own
+// subdirectory so `.idit/` isn't cluttered with sockets, pids, and config.
+func LogDir(root string) string {
+	return filepath.Join(root, StateDir, "logs")
+}
+
 // LogPath is the daemon log path for a workspace + language.
 func LogPath(root, languageKey string) string {
-	return filepath.Join(root, StateDir, languageKey+".log")
+	return filepath.Join(LogDir(root), languageKey+".log")
 }
 
 // FindRoot walks up from start for a directory containing a `.idit/` marker.

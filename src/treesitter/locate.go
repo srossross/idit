@@ -87,6 +87,40 @@ var tsLocateSpecs = []kindQuery{
 	{"parameter", "(optional_parameter pattern: (identifier) @x)"},
 }
 
+var cLocateSpecs = []kindQuery{
+	{KindFunction, "(function_definition declarator: (function_declarator declarator: (identifier) @x))"},
+	{KindType, "(struct_specifier name: (type_identifier) @x)"},
+	{KindType, "(union_specifier name: (type_identifier) @x)"},
+	{KindType, "(enum_specifier name: (type_identifier) @x)"},
+	{KindType, "(type_definition declarator: (type_identifier) @x)"},
+	{KindVariable, "(declaration declarator: (identifier) @x)"},
+	{KindVariable, "(declaration declarator: (init_declarator declarator: (identifier) @x))"},
+	{"parameter", "(parameter_declaration declarator: (identifier) @x)"},
+}
+
+// cppLocateSpecs extends the C specs with classes and methods. Note: a C/C++
+// function's name nests under function_declarator, whose sibling (not child) is
+// the body, so locate resolves a function and its parameters but not body-local
+// declarations — see Locate's scope-descent.
+var cppLocateSpecs = append([]kindQuery{
+	{KindClass, "(class_specifier name: (type_identifier) @x)"},
+	{KindMethod, "(field_declaration declarator: (function_declarator declarator: (field_identifier) @x))"},
+	{KindMethod, "(function_definition declarator: (function_declarator declarator: (field_identifier) @x))"},
+}, cLocateSpecs...)
+
+// pyLocateSpecs cover top-level and nested declarations plus the parameter forms
+// (plain, default, typed, typed-default). compileLocate skips any whose node
+// types the grammar lacks, so the extra parameter variants are safe to list.
+var pyLocateSpecs = []kindQuery{
+	{KindFunction, "(function_definition name: (identifier) @x)"},
+	{KindClass, "(class_definition name: (identifier) @x)"},
+	{KindVariable, "(assignment left: (identifier) @x)"},
+	{"parameter", "(parameters (identifier) @x)"},
+	{"parameter", "(default_parameter name: (identifier) @x)"},
+	{"parameter", "(typed_parameter (identifier) @x)"},
+	{"parameter", "(typed_default_parameter name: (identifier) @x)"},
+}
+
 // compileLocate compiles the locate specs, skipping any whose node types the
 // grammar lacks (the registry test guards the ones we rely on).
 func compileLocate(lang *sitter.Language, specs []kindQuery) []locatePattern {

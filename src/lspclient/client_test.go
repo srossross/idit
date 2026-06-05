@@ -9,6 +9,27 @@ import (
 	"github.com/srossross/clidit/src/lsputil"
 )
 
+func TestDefaultConfigurationReturnsSettings(t *testing.T) {
+	settings := map[string]any{"python": map[string]any{"pythonPath": "/v/bin/python"}}
+	params := json.RawMessage(`{"items":[{"section":"python"},{"section":"basedpyright"}]}`)
+	res, rpcErr := defaultServerRequestHandler(settings, "workspace/configuration", params)
+	if rpcErr != nil {
+		t.Fatalf("unexpected rpc error: %v", rpcErr)
+	}
+	arr, ok := res.([]any)
+	if !ok || len(arr) != 2 {
+		t.Fatalf("want 2-element array, got %#v", res)
+	}
+	// Configured section returns its value; unknown section returns null.
+	py, ok := arr[0].(map[string]any)
+	if !ok || py["pythonPath"] != "/v/bin/python" {
+		t.Fatalf("python section wrong: %#v", arr[0])
+	}
+	if arr[1] != nil {
+		t.Fatalf("unknown section should be null, got %#v", arr[1])
+	}
+}
+
 // fakeServer wires a Client to a scripted peer over two io.Pipes, returning the
 // client plus a channel of messages the client sent and a function to push a
 // raw rpcMessage from the "server" back to the client.

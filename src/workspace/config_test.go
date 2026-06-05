@@ -40,6 +40,116 @@ func TestEmitLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEmitLoadSettingsRoundTrip(t *testing.T) {
+	bp := presetServer("basedpyright")
+	bp.Settings = map[string]map[string]any{
+		"python": {"pythonPath": "/ws/.venv/bin/python"},
+	}
+	out, err := Emit(IditConfig{Servers: []ServerConfig{bp}})
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	root := t.TempDir()
+	writeConfig(t, root, out)
+
+	got, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	s := got.Servers[0]
+	if s.InterpreterPath() != "/ws/.venv/bin/python" {
+		t.Fatalf("pythonPath not round-tripped: %+v", s.Settings)
+	}
+	if v := s.LSPSettings()["python"]; v == nil {
+		t.Fatalf("LSPSettings missing python section: %v", s.LSPSettings())
+	}
+}
+
+func TestValidateRuntime(t *testing.T) {
+	// A Python server with no interpreter fails fast.
+	bp := presetServer("basedpyright")
+	if err := bp.ValidateRuntime(); err == nil {
+		t.Fatal("python server with no interpreter should fail validation")
+	}
+	// A non-existent configured path also fails.
+	bp.Settings = map[string]map[string]any{"python": {"pythonPath": "/no/such/python"}}
+	if err := bp.ValidateRuntime(); err == nil {
+		t.Fatal("non-existent interpreter path should fail validation")
+	}
+	// A real, existing file passes.
+	f := filepath.Join(t.TempDir(), "python")
+	if err := os.WriteFile(f, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bp.Settings["python"]["pythonPath"] = f
+	if err := bp.ValidateRuntime(); err != nil {
+		t.Fatalf("valid interpreter should pass: %v", err)
+	}
+	// Non-Python servers never require an interpreter.
+	if err := presetServer("gopls").ValidateRuntime(); err != nil {
+		t.Fatalf("gopls should not require an interpreter: %v", err)
+	}
+}
+
+func TestCheckBinary(t *testing.T) {
+	// A preset whose binary is absent reports a guiding error with the hint.
+	s := presetServer("basedpyright")
+	s.Command = []string{"idit-definitely-not-a-real-binary-xyz"}
+	err := s.CheckBinary()
+	if err == nil {
+		t.Fatal("missing binary should error")
+	}
+	if !strings.Contains(err.Error(), "uv tool install basedpyright") {
+		t.Fatalf("error should include the install hint: %v", err)
+	}
+	// A binary that is on PATH passes (go drives these tests, so it's present).
+	s.Command = []string{"go"}
+	if err := s.CheckBinary(); err != nil {
+		t.Fatalf("go should resolve on PATH: %v", err)
+	}
+}
+
+func TestProjectSetupHintClangd(t *testing.T) {
+	root := t.TempDir()
+	clangd := presetServer("clangd")
+	if clangd.ProjectSetupHint(root) == "" {
+		t.Fatal("clangd with no compilation database should produce a hint")
+	}
+	if !strings.Contains(clangd.ProjectSetupHint(root), "CMAKE_EXPORT_COMPILE_COMMANDS") {
+		t.Fatalf("hint should name the cmake flag: %q", clangd.ProjectSetupHint(root))
+	}
+	// A compile_commands.json clears it.
+	if err := os.WriteFile(filepath.Join(root, "compile_commands.json"), []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if h := clangd.ProjectSetupHint(root); h != "" {
+		t.Fatalf("compile DB present should clear the hint, got %q", h)
+	}
+	// Non-C++ servers never get the clangd hint.
+	if presetServer("gopls").ProjectSetupHint(root) != "" {
+		t.Fatal("gopls should have no clangd setup hint")
+	}
+}
+
+func TestDetectPythonInterpreter(t *testing.T) {
+	t.Setenv("VIRTUAL_ENV", "") // isolate from the test runner's active venv
+	root := t.TempDir()
+	if got := DetectPythonInterpreter(root); got != "" {
+		t.Fatalf("empty project should detect nothing, got %q", got)
+	}
+	bin := filepath.Join(root, ".venv", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	py := filepath.Join(bin, "python")
+	if err := os.WriteFile(py, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectPythonInterpreter(root); got != py {
+		t.Fatalf("want %q, got %q", py, got)
+	}
+}
+
 func presetServer(name string) ServerConfig {
 	p := Presets[name]
 	p.Name = name
@@ -109,6 +219,12 @@ func TestServerForFile(t *testing.T) {
 	}
 	if _, ok := ServerForFile(cfg, "/x/README"); ok {
 		t.Fatal("no extension should not match")
+	}
+
+	py := IditConfig{Servers: []ServerConfig{presetServer("basedpyright")}}
+	s, ok = ServerForFile(py, "/x/y/main.py")
+	if !ok || s.Name != "basedpyright" || s.LanguageID != "python" {
+		t.Fatalf("py file → basedpyright/python, got %v ok=%v langID=%q", s.Name, ok, s.LanguageID)
 	}
 }
 

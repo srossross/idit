@@ -24,6 +24,7 @@ func newServerCmd() *cobra.Command {
 
 func newServerAddCmd() *cobra.Command {
 	var command, ext, lang string
+	var autoConfig bool
 	cmd := &cobra.Command{
 		Use:   "add <name>",
 		Short: "add a language server (preset or --command/--ext)",
@@ -73,6 +74,21 @@ func newServerAddCmd() *cobra.Command {
 					name, strings.Join(workspace.PresetNames(), ", "))
 			}
 
+			// --auto-config detects language tooling and writes it into the
+			// saved config. It is opt-in: idit never auto-detects at query time.
+			if autoConfig && server.RequiresInterpreter() {
+				py := workspace.DetectPythonInterpreter(root)
+				if py == "" {
+					fail("--auto-config: no Python interpreter found (looked at $VIRTUAL_ENV, ./.venv, ./venv)\n" +
+						"  create one (e.g. `uv venv`) or set settings.python.pythonPath manually")
+				}
+				if server.Settings == nil {
+					server.Settings = map[string]map[string]any{}
+				}
+				server.Settings["python"] = map[string]any{"pythonPath": py}
+				fmt.Printf("auto-config: python.pythonPath = %s\n", py)
+			}
+
 			cfg.Servers = append(cfg.Servers, server)
 			out, err := workspace.Emit(cfg)
 			if err != nil {
@@ -82,12 +98,23 @@ func newServerAddCmd() *cobra.Command {
 				fail("%v", err)
 			}
 			fmt.Printf("added server %q [%s]\n", name, strings.Join(server.Extensions, " "))
+			// Guide now: the binary is needed to run; the project setup (e.g. a
+			// clangd compilation database) is needed for accurate results. The
+			// query path fails fast on a missing binary later.
+			if err := server.CheckBinary(); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+			}
+			if hint := server.ProjectSetupHint(root); hint != "" {
+				fmt.Fprintf(os.Stderr, "warning: server %q: %s\n", name, hint)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&command, "command", "", `server command, e.g. "tsserver --stdio"`)
 	cmd.Flags().StringVar(&ext, "ext", "", "comma-separated extensions, e.g. .ts,.tsx")
 	cmd.Flags().StringVar(&lang, "lang", "", "LSP language id (defaults to the server name)")
+	cmd.Flags().BoolVar(&autoConfig, "auto-config", false,
+		"detect language tooling (Python interpreter from $VIRTUAL_ENV/.venv/venv) and write it to config")
 	return cmd
 }
 
@@ -132,7 +159,11 @@ func newServerListCmd() *cobra.Command {
 				}
 				preset := workspace.Presets[name]
 				preset.Name = name
-				available = append(available, fmt.Sprintf("%s   (idit server add %s)", formatServerLine(preset), name))
+				line := fmt.Sprintf("%s   (idit server add %s)", formatServerLine(preset), name)
+				if preset.Install != "" {
+					line += "\n      install: " + preset.Install
+				}
+				available = append(available, line)
 			}
 
 			printServerSection("running", running)

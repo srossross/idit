@@ -18,12 +18,15 @@ func killSignal() syscall.Signal { return syscall.SIGKILL }
 func newShutdownCmd() *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
-		Use:   "shutdown",
-		Short: "stop this workspace's daemon(s)",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			cwd, _ := os.Getwd()
-			root, ok := workspace.FindRoot(cwd)
+		Use:   "shutdown [path]",
+		Short: "stop the daemon(s) for a workspace (defaults to the current directory)",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			start := "."
+			if len(args) > 0 {
+				start = args[0]
+			}
+			root, ok := workspace.FindRoot(resolveCwd(start))
 			if !ok {
 				fail("not an idit workspace — nothing to shut down")
 			}

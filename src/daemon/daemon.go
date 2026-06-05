@@ -65,9 +65,10 @@ func Run(args []string) {
 	diagnostics := lspclient.NewDiagnosticsTracker()
 
 	lsp, err := lspclient.New(lspclient.Options{
-		Cmd: server.Command,
-		Cwd: root,
-		Env: spawnEnv(root),
+		Cmd:      server.Command,
+		Cwd:      root,
+		Env:      spawnEnv(root),
+		Settings: server.LSPSettings(),
 		OnNotification: func(method string, params json.RawMessage) {
 			progress.Handle(method, params)
 			diagnostics.Handle(method, params)

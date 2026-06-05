@@ -43,6 +43,10 @@ type Options struct {
 	OnServerRequest ServerRequestHandler
 	OnNotification  NotificationHandler
 	OnStderr        func(line string)
+	// Settings answers workspace/configuration requests: a requested item's
+	// section name is looked up here and its value returned (null if absent).
+	// Ignored when OnServerRequest is set.
+	Settings map[string]any
 }
 
 type rpcMessage struct {
@@ -114,7 +118,10 @@ func New(opts Options) (*Client, error) {
 func newClient(opts Options, stdin io.WriteCloser, stdout, stderr io.Reader) *Client {
 	srh := opts.OnServerRequest
 	if srh == nil {
-		srh = defaultServerRequestHandler
+		settings := opts.Settings
+		srh = func(method string, params json.RawMessage) (any, *RpcError) {
+			return defaultServerRequestHandler(settings, method, params)
+		}
 	}
 	return &Client{
 		stdin:           stdin,
