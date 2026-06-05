@@ -22,7 +22,7 @@ from the terminal. `idit` combines two layers:
 Build the CLI (CGo is required — a C compiler must be on PATH):
 
 ```bash
-go install github.com/srossross/clidit/cmd/idit@latest
+go install github.com/srossross/idit/cmd/idit@latest
 ```
 
 ## Language servers are not bundled

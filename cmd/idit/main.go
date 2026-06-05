@@ -6,8 +6,8 @@ package main
 import (
 	"os"
 
-	"github.com/srossross/clidit/src/cli"
-	"github.com/srossross/clidit/src/daemon"
+	"github.com/srossross/idit/src/cli"
+	"github.com/srossross/idit/src/daemon"
 )
 
 func main() {
