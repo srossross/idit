@@ -3,11 +3,9 @@ package daemon
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
 	"strings"
 
+	"github.com/srossross/clidit/src/fsscan"
 	"github.com/srossross/clidit/src/ipc"
 	"github.com/srossross/clidit/src/lsputil"
 )
@@ -106,10 +104,6 @@ func syncDoc(ctx *Context, absPath string) *syncResult {
 
 // --- project loading for symbol search ---
 
-var ignoredDirs = map[string]struct{}{
-	"node_modules": {}, ".git": {}, ".idit": {}, "dist": {}, "build": {}, "out": {}, "coverage": {},
-}
-
 // Cap on how many matching files we open to load projects for a symbol search.
 const openLimit = 25
 
@@ -117,9 +111,9 @@ const openLimit = 25
 // project(s) containing the symbol get loaded before workspace/symbol runs.
 func loadProjectsMentioning(ctx *Context, query string) {
 	hasExt := extMatcher(ctx)
-	files := ripgrepFiles(ctx.Root, query)
+	files := fsscan.RipgrepFiles(ctx.Root, query)
 	if files == nil {
-		files = scanFiles(ctx.Root, hasExt, func(data []byte) bool {
+		files = fsscan.ScanFiles(ctx.Root, hasExt, func(data []byte) bool {
 			return strings.Contains(string(data), query)
 		}, openLimit)
 	}
@@ -144,29 +138,6 @@ func loadProjectsMentioning(ctx *Context, query string) {
 	}
 }
 
-// candidateFilesRegex returns up to limit extension-matching files whose contents
-// match re, via ripgrep in regex mode (falling back to a bounded scan when
-// ripgrep isn't available). ripgrep's regex engine is close enough to RE2 to use
-// as a prefilter; the caller re-checks each span with re itself, so any
-// over-inclusion here is harmless.
-func candidateFilesRegex(ctx *Context, pattern string, re *regexp.Regexp, limit int) []string {
-	hasExt := extMatcher(ctx)
-	files := ripgrepFilesRegex(ctx.Root, pattern)
-	if files == nil {
-		files = scanFiles(ctx.Root, hasExt, re.Match, limit)
-	}
-	var matched []string
-	for _, f := range files {
-		if hasExt(f) {
-			matched = append(matched, f)
-			if len(matched) >= limit {
-				break
-			}
-		}
-	}
-	return matched
-}
-
 // extMatcher returns a predicate reporting whether a path's extension is one the
 // server handles.
 func extMatcher(ctx *Context) func(string) bool {
@@ -182,76 +153,6 @@ func extMatcher(ctx *Context) func(string) bool {
 		_, ok := exts[strings.ToLower(path[dot:])]
 		return ok
 	}
-}
-
-// ripgrepFiles returns files containing query (literal) via ripgrep, or nil if
-// ripgrep isn't available or errored.
-func ripgrepFiles(root, query string) []string {
-	return runRipgrep("--files-with-matches", "--fixed-strings", "--", query, root)
-}
-
-// ripgrepFilesRegex returns files whose contents match the regex pattern via
-// ripgrep, or nil if ripgrep isn't available or errored.
-func ripgrepFilesRegex(root, pattern string) []string {
-	return runRipgrep("--files-with-matches", "--", pattern, root)
-}
-
-// runRipgrep runs `rg <args>` and returns the matched file paths, [] on "no
-// matches", or nil when ripgrep is missing or errors.
-func runRipgrep(args ...string) []string {
-	//nolint:gosec // fixed argv; the query/pattern is a literal operand after `--`, not a shell string
-	cmd := exec.Command("rg", args...)
-	out, err := cmd.Output()
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
-			return []string{} // 1 = no matches (fine)
-		}
-		return nil // ripgrep not installed or real error
-	}
-	var files []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if line != "" {
-			files = append(files, line)
-		}
-	}
-	return files
-}
-
-// scanFiles is the no-ripgrep fallback: a bounded directory walk returning up to
-// limit extension-matching files whose contents satisfy match.
-func scanFiles(root string, hasExt func(string) bool, match func([]byte) bool, limit int) []string {
-	var matches []string
-	stack := []string{root}
-	budget := 4000
-	for len(stack) > 0 && budget > 0 && len(matches) < limit {
-		dir := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			full := filepath.Join(dir, entry.Name())
-			if entry.IsDir() {
-				if _, ignored := ignoredDirs[entry.Name()]; !ignored && !strings.HasPrefix(entry.Name(), ".") {
-					stack = append(stack, full)
-				}
-			} else if entry.Type().IsRegular() && hasExt(entry.Name()) {
-				budget--
-				if budget <= 0 {
-					break
-				}
-				//nolint:gosec // full is a path under the workspace root we're scanning
-				if data, err := os.ReadFile(full); err == nil && match(data) {
-					matches = append(matches, full)
-				}
-				if len(matches) >= limit {
-					break
-				}
-			}
-		}
-	}
-	return matches
 }
 
 // --- misc ---

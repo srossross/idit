@@ -11,8 +11,9 @@ import (
 func newCallersCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "callers <file:line:col>",
+		Use:   "callers <location>",
 		Short: "find callers of a function",
+		Long:  locationNote,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			resp := runOp("callers", args[0], nil)

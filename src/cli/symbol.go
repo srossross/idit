@@ -17,16 +17,13 @@ import (
 func newSymbolCmd() *cobra.Command {
 	var asJSON bool
 	var under string
-	var fuzzy, strict bool
 	var kind string
-	var filter nameFlags
 	cmd := &cobra.Command{
 		Use:   "symbol <query>",
 		Short: "search symbols across the project",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			query := args[0]
-			match := filter.matcher() // validate --grep before any daemon round-trip
 			var wantKind map[string]bool
 			if kind != "" {
 				var err error
@@ -65,9 +62,10 @@ func newSymbolCmd() *cobra.Command {
 			if under != "" {
 				symbols = symbolsUnder(symbols, resolveCwd(under))
 			}
-			// --strict (exact name vs query), --prefix/--grep, and --kind narrow
-			// the returned set further.
-			symbols = filterFound(symbols, query, strict, match, wantKind)
+			// --kind narrows the returned set to the requested kind(s).
+			if wantKind != nil {
+				symbols = filterByKind(symbols, wantKind)
+			}
 
 			if asJSON {
 				printJSON(orEmptyFound(symbols))
@@ -97,32 +95,18 @@ func newSymbolCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&under, "under", "", "only symbols whose file is under this path (e.g. . for this workspace)")
-	cmd.Flags().BoolVar(&fuzzy, "fuzzy", false, "fuzzy match the query (server default)")
-	cmd.Flags().BoolVar(&strict, "strict", false, "keep only names equal to the query (case-insensitive)")
-	cmd.MarkFlagsMutuallyExclusive("fuzzy", "strict")
 	cmd.Flags().StringVar(&kind, "kind", "", "only this kind (e.g. func, class, type)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "structured output")
-	filter.add(cmd)
 	return cmd
 }
 
-// filterFound narrows a workspace/symbol result by the post-query CLI filters:
-// --strict re-checks names for case-insensitive equality with the query
-// (dropping loose fuzzy hits); --prefix/--grep narrow by name via match; --kind
-// keeps only the requested kind(s) when wantKind is non-nil.
-func filterFound(symbols []lsputil.FoundSymbol, query string, strict bool, match lsputil.NameMatcher, wantKind map[string]bool) []lsputil.FoundSymbol {
+// filterByKind keeps only symbols whose kind is in wantKind.
+func filterByKind(symbols []lsputil.FoundSymbol, wantKind map[string]bool) []lsputil.FoundSymbol {
 	kept := symbols[:0]
 	for _, s := range symbols {
-		if strict && !strings.EqualFold(s.Name, query) {
-			continue
+		if wantKind[s.Kind] {
+			kept = append(kept, s)
 		}
-		if match.Active() && !match.Match(s.Name) {
-			continue
-		}
-		if wantKind != nil && !wantKind[s.Kind] {
-			continue
-		}
-		kept = append(kept, s)
 	}
 	return kept
 }

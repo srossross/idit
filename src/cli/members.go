@@ -14,8 +14,9 @@ func newMembersCmd() *cobra.Command {
 	var asJSON, noDetail bool
 	var filter nameFlags
 	cmd := &cobra.Command{
-		Use:   "members <file:line:col>",
+		Use:   "members <location>",
 		Short: "list members available after a `.`",
+		Long:  locationNote,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			detail := !noDetail

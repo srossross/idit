@@ -13,8 +13,9 @@ import (
 func newRefsCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "refs <file:line:col>",
+		Use:   "refs <location>",
 		Short: "find all references to a symbol",
+		Long:  locationNote,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			resp := runOp("refs", args[0], nil)

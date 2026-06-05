@@ -10,8 +10,9 @@ import (
 func newTypeCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "type <file:line:col>",
+		Use:   "type <location>",
 		Short: "show the type/signature at a position",
+		Long:  locationNote,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			resp := runOp("type", args[0], nil)

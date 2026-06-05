@@ -13,14 +13,12 @@ func newExtractCmd() *cobra.Command {
 	var asJSON, dryRun bool
 	var scope string
 	cmd := &cobra.Command{
-		Use:   "extract <file:l:c-l:c>",
+		Use:   "extract <range>",
 		Short: "extract a selection (then `idit rename`)",
+		Long:  rangeNote,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			r, err := parseRange(args[0])
-			if err != nil {
-				fail("%v", err)
-			}
+			r := mustResolveRange(args[0])
 			file := resolveCwd(r.File)
 			sock, server := socketForFile(file)
 			resp := sendOp(sock, server.Name, ipc.Request{

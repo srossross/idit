@@ -13,14 +13,12 @@ import (
 func newRenameCmd() *cobra.Command {
 	var asJSON, dryRun bool
 	cmd := &cobra.Command{
-		Use:   "rename <file:line:col> <newName>",
+		Use:   "rename <location> <newName>",
 		Short: "rename a symbol project-wide",
+		Long:  locationNote,
 		Args:  cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			target, err := parseLocator(args[0])
-			if err != nil {
-				fail("%v", err)
-			}
+			target := mustResolve(args[0])
 			newName := args[1]
 			file := resolveCwd(target.File)
 			sock, server := socketForFile(file)

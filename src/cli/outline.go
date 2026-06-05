@@ -29,7 +29,7 @@ func newOutlineCmd() *cobra.Command {
 					fail("%v", err)
 				}
 			}
-			file := resolveCwd(args[0])
+			file := resolveCwd(stripPosition(args[0]))
 			sock, server := socketForFile(file)
 			resp := sendOp(sock, server.Name, ipc.Request{Op: "outline", File: file})
 			if !resp.OK {

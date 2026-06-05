@@ -35,9 +35,11 @@ func Run(args []string) {
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "idit",
-		Short:         "expose a language server from the command line",
-		Long:          "idit exposes a language server from the command line.\n\nDaemons start automatically; configure servers in .idit/config.yml.",
+		Use:   "idit",
+		Short: "expose a language server from the command line",
+		Long: "idit exposes a language server from the command line.\n\n" +
+			"Daemons start automatically; configure servers in .idit/config.yml.\n\n" +
+			locatorsHelp,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -50,8 +52,8 @@ func newRootCmd() *cobra.Command {
 		newMembersCmd(),
 		newOutlineCmd(),
 		newSymbolCmd(),
-		newStringCmd(),
-		newCommentCmd(),
+		newFindCmd(),
+		newLocateCmd(),
 		newCallersCmd(),
 		newCheckCmd(),
 		newRenameCmd(),
@@ -117,13 +119,10 @@ func sendOp(sock, serverName string, req ipc.Request) ipc.Response {
 	return resp
 }
 
-// runOp resolves the daemon owning a `file:line:col` target and runs a
-// positional op. apply may set extra request fields.
+// runOp resolves the daemon owning a target — `file:line:col` or `file#symbol` —
+// and runs a positional op. apply may set extra request fields.
 func runOp(verb, targetArg string, apply func(*ipc.Request)) ipc.Response {
-	target, err := parseLocator(targetArg)
-	if err != nil {
-		fail("%v", err)
-	}
+	target := mustResolve(targetArg)
 	file := resolveCwd(target.File)
 	sock, server := socketForFile(file)
 

@@ -10,8 +10,9 @@ import (
 func newDefCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "def <file:line:col>",
+		Use:   "def <location>",
 		Short: "find where a symbol is defined",
+		Long:  locationNote,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			resp := runOp("def", args[0], nil)

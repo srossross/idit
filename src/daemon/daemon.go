@@ -229,10 +229,6 @@ func initializeParams(root string) map[string]any {
 		"workspaceFolders": []map[string]any{
 			{"uri": rootURI, "name": filepath.Base(root)},
 		},
-		// gopls gates semantic tokens behind this setting (default off); without
-		// it `idit string`/`idit comment` get an empty token stream. Other servers
-		// ignore the unknown option.
-		"initializationOptions": map[string]any{"semanticTokens": true},
 		"capabilities": map[string]any{
 			"textDocument": map[string]any{
 				"synchronization": map[string]any{"dynamicRegistration": false},
@@ -253,26 +249,6 @@ func initializeParams(root string) map[string]any {
 				"publishDiagnostics": map[string]any{
 					"relatedInformation": true,
 					"tagSupport":         map[string]any{"valueSet": []int{1, 2}},
-				},
-				// Enabling semanticTokens makes the server advertise its legend
-				// (the token-type names) and answer semanticTokens/full, which is
-				// how `idit string`/`idit comment` learn which spans are string
-				// literals vs comments.
-				"semanticTokens": map[string]any{
-					"dynamicRegistration": false,
-					"requests":            map[string]any{"range": false, "full": true},
-					"tokenTypes": []string{
-						"namespace", "type", "class", "enum", "interface", "struct", "typeParameter",
-						"parameter", "variable", "property", "enumMember", "event", "function", "method",
-						"macro", "keyword", "modifier", "comment", "string", "number", "regexp", "operator", "decorator",
-					},
-					"tokenModifiers": []string{
-						"declaration", "definition", "readonly", "static", "deprecated", "abstract",
-						"async", "modification", "documentation", "defaultLibrary",
-					},
-					"formats":                 []string{"relative"},
-					"overlappingTokenSupport": false,
-					"multilineTokenSupport":   true,
 				},
 			},
 			"workspace": map[string]any{

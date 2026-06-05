@@ -135,6 +135,22 @@ func ToLSPPosition(line, col int) Position {
 	return Position{Line: line - 1, Character: col - 1}
 }
 
+// UTF16Len returns the number of UTF-16 code units in s (runes above the BMP
+// count as two). This is idit/LSP's column unit, so callers working from byte
+// offsets convert through it to report columns consistent with the LSP-backed
+// commands.
+func UTF16Len(s string) int {
+	units := 0
+	for _, r := range s {
+		if r > 0xFFFF {
+			units += 2
+		} else {
+			units++
+		}
+	}
+	return units
+}
+
 // defItem is the union of Location and LocationLink fields, so one struct can
 // decode whichever shape the server returns.
 type defItem struct {

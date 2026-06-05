@@ -96,9 +96,13 @@ func parseLineCol(s string) (line, col int, ok bool) {
 	return l, c, true
 }
 
-// stripPosition drops a trailing :line[:col] from a check target, leaving just
-// the path.
+// stripPosition reduces a whole-file target to just its path: it drops a
+// `#symbol.path` suffix and/or a trailing `:line[:col]`, so file commands accept
+// the same target forms as the positional ones.
 func stripPosition(arg string) string {
+	if before, _, found := strings.Cut(arg, "#"); found {
+		return before
+	}
 	parts := strings.Split(arg, ":")
 	for len(parts) > 1 {
 		if _, ok := atoi(parts[len(parts)-1]); !ok {
