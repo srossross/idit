@@ -10,17 +10,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/srossross/idit/src/fsscan"
 	"github.com/srossross/idit/src/lsputil"
 	"github.com/srossross/idit/src/treesitter"
 )
 
-// findFileLimit caps how many files a search reads. Parsing/grepping is local and
-// cheap, so this is generous; ripgrep already narrows the matching set.
-const findFileLimit = 5000
-
 func newFindCmd() *cobra.Command {
-	var kindList string
+	var kindList, langList string
 	var ignoreCase, invert, asJSON, noIgnore bool
 	var context int
 	cmd := &cobra.Command{
@@ -42,6 +37,10 @@ func newFindCmd() *cobra.Command {
 			if err != nil {
 				fail("%v", err)
 			}
+			langExts, err := parseLangs(langList)
+			if err != nil {
+				fail("%v", err)
+			}
 
 			p := pattern
 			if ignoreCase {
@@ -55,7 +54,7 @@ func newFindCmd() *cobra.Command {
 			useKinds := len(kinds) > 0
 			// Invert lists non-matching lines, so it must see every file, not just
 			// the ones ripgrep says contain the pattern.
-			files, skipped := discoverFiles(paths, p, re, useKinds, invert, noIgnore)
+			files, skipped := discoverFiles(paths, p, re, useKinds, invert, noIgnore, langExts)
 			// Explain why matching files were ignored: --kind only searches
 			// languages with a bundled grammar.
 			if useKinds && len(skipped) > 0 {
@@ -107,7 +106,7 @@ func newFindCmd() *cobra.Command {
 			}
 			if len(sites) == 0 {
 				fmt.Fprintln(os.Stderr, "no matches found")
-				if n := ignoredMatchCount(paths, p, re, useKinds, noIgnore, len(files)); n > 0 {
+				if n := ignoredMatchCount(paths, p, re, useKinds, noIgnore, len(files), langExts); n > 0 {
 					fmt.Fprintf(os.Stderr, "idit: %d more file(s) match but are ignored (.gitignore/.ignore); use --no-ignore to include them\n", n)
 				}
 				os.Exit(2)
@@ -117,49 +116,13 @@ func newFindCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&kindList, "kind", "k", "", "restrict to comma-separated kinds (string,comment,function,method,class,interface,type,variable,const; aliases ok)")
+	cmd.Flags().StringVarP(&langList, "lang", "l", "", "restrict to comma-separated languages (go,js,ts,python,c,cpp,sql; aliases ok)")
 	cmd.Flags().BoolVarP(&ignoreCase, "ignore-case", "i", false, "case-insensitive match")
 	cmd.Flags().IntVarP(&context, "context", "C", 0, "print N lines of context around each match")
 	cmd.Flags().BoolVarP(&invert, "invert-match", "v", false, "select lines NOT matching")
 	cmd.Flags().BoolVarP(&noIgnore, "no-ignore", "u", false, "also search files excluded by .gitignore/.ignore")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "structured output")
 	return cmd
-}
-
-// ignoredMatchCount reports how many additional files would be searched if ignore
-// rules were lifted — used only on an empty result to hint at .gitignore hiding
-// matches. Returns 0 when --no-ignore is already set or nothing extra matches.
-func ignoredMatchCount(paths []string, pattern string, re *regexp.Regexp, requireGrammar, noIgnore bool, found int) int {
-	if noIgnore {
-		return 0
-	}
-	all, _ := discoverFiles(paths, pattern, re, requireGrammar, false, true)
-	return len(all) - found
-}
-
-// parseKinds resolves a comma-separated kind list (with aliases) to canonical
-// kinds, preserving order and dropping duplicates. An empty list means "no kind
-// filter" (plain grep).
-func parseKinds(list string) ([]string, error) {
-	if strings.TrimSpace(list) == "" {
-		return nil, nil
-	}
-	seen := map[string]bool{}
-	var out []string
-	for raw := range strings.SplitSeq(list, ",") {
-		name := strings.TrimSpace(strings.ToLower(raw))
-		if name == "" {
-			continue
-		}
-		canon, ok := treesitter.CanonicalKind(name)
-		if !ok {
-			return nil, fmt.Errorf("unknown --kind %q", raw)
-		}
-		if !seen[canon] {
-			seen[canon] = true
-			out = append(out, canon)
-		}
-	}
-	return out, nil
 }
 
 // lineMatches returns a Site for every regex match across src, line by line — the
@@ -186,61 +149,6 @@ func lineMatches(file string, src []byte, re *regexp.Regexp) []lsputil.Site {
 		}
 	}
 	return sites
-}
-
-// discoverFiles returns the files under paths to search. For a normal search it
-// uses ripgrep to keep only files whose contents match (a prefilter; matching is
-// re-checked per file). For --kind it keeps only files with a bundled grammar.
-// When all is set (invert), it returns every candidate file regardless of match.
-//
-// skipped holds the distinct extensions of matching files dropped for lacking a
-// grammar (only under --kind), so the caller can explain an empty result.
-func discoverFiles(paths []string, pattern string, re *regexp.Regexp, requireGrammar, all, noIgnore bool) (files, skipped []string) {
-	hasGrammar := func(name string) bool {
-		return treesitter.HasExt(strings.ToLower(filepath.Ext(name)))
-	}
-	hasExt := func(name string) bool { return !requireGrammar || hasGrammar(name) }
-	seen := map[string]bool{}
-	skip := map[string]bool{}
-	add := func(f string) {
-		if seen[f] {
-			return
-		}
-		if hasExt(f) {
-			seen[f] = true
-			files = append(files, f)
-		} else if requireGrammar {
-			skip[strings.ToLower(filepath.Ext(f))] = true
-		}
-	}
-	for _, p := range paths {
-		root := resolveCwd(p)
-		// A file path is searched directly; per-file matching decides the rest.
-		// Only directories go through ripgrep / the walk.
-		if info, err := os.Stat(root); err == nil && !info.IsDir() {
-			add(root)
-			continue
-		}
-		var found []string
-		switch {
-		case all:
-			found = fsscan.ScanFiles(root, hasExt, func([]byte) bool { return true }, findFileLimit)
-		default:
-			found = fsscan.RipgrepFilesRegex(root, pattern, noIgnore)
-			if found == nil {
-				found = fsscan.ScanFiles(root, hasExt, re.Match, findFileLimit)
-			}
-		}
-		for _, f := range found {
-			add(f)
-		}
-	}
-	sort.Strings(files)
-	for ext := range skip {
-		skipped = append(skipped, ext)
-	}
-	sort.Strings(skipped)
-	return files, skipped
 }
 
 // window is an inclusive 1-based line range to print as one group.

@@ -297,6 +297,73 @@ func (g *Grammar) Search(file string, src []byte, kinds []string, re *regexp.Reg
 	return sites
 }
 
+// ReplaceMatch is one regex match inside a kind span: the absolute byte range to
+// splice and the replacement text already expanded from the regex's submatches.
+// Line/Col (1-based, UTF-16 column) point at the match start for reporting.
+type ReplaceMatch struct {
+	StartByte, EndByte int
+	Line, Col          int
+	New                string
+}
+
+// SearchReplace finds every match of re inside a node of any of the given kinds
+// and builds each match's replacement text from repl via re.Expand ($1/${name}
+// supported). It is the write-twin of Search: same parse/query loop, but it
+// returns absolute byte ranges to splice instead of report-only Sites. Matches
+// are de-duplicated by start byte so a node captured by more than one kind query
+// is spliced once. Kinds this grammar doesn't support are skipped.
+func (g *Grammar) SearchReplace(src []byte, kinds []string, re *regexp.Regexp, repl string) []ReplaceMatch {
+	parser := sitter.NewParser()
+	defer parser.Close()
+	if err := parser.SetLanguage(g.lang); err != nil {
+		return nil
+	}
+	tree := parser.Parse(src, nil)
+	if tree == nil {
+		return nil
+	}
+	defer tree.Close()
+	root := tree.RootNode()
+	pm := newPosMapper(src)
+
+	var matches []ReplaceMatch
+	seen := map[int]bool{} // start byte -> already emitted
+	replBytes := []byte(repl)
+	for _, kind := range kinds {
+		query := g.queries[kind]
+		if query == nil {
+			continue
+		}
+		qc := sitter.NewQueryCursor()
+		qm := qc.Matches(query, root, src)
+		for {
+			m := qm.Next()
+			if m == nil {
+				break
+			}
+			for _, capture := range m.Captures {
+				node := capture.Node
+				//nolint:gosec // byte offsets are bounded by the file length, itself an int
+				start, end := int(node.StartByte()), int(node.EndByte())
+				for _, loc := range re.FindAllSubmatchIndex(src[start:end], -1) {
+					ms, me := start+loc[0], start+loc[1]
+					if seen[ms] {
+						continue
+					}
+					seen[ms] = true
+					line, col := pm.at(ms)
+					newText := re.Expand(nil, replBytes, src[start:end], loc)
+					matches = append(matches, ReplaceMatch{
+						StartByte: ms, EndByte: me, Line: line, Col: col, New: string(newText),
+					})
+				}
+			}
+		}
+		qc.Close()
+	}
+	return matches
+}
+
 // posMapper converts a byte offset in a file to a 1-based line and 1-based UTF-16
 // column.
 type posMapper struct {

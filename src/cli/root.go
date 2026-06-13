@@ -57,6 +57,7 @@ func newRootCmd() *cobra.Command {
 		newOutlineCmd(),
 		newSymbolCmd(),
 		newFindCmd(),
+		newReplaceCmd(),
 		newLocateCmd(),
 		newCallersCmd(),
 		newCheckCmd(),
